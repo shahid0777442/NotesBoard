@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Notes Board</title>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--line:#334155;--txt:#e2e8f0;--mut:#94a3b8;--acc:#38bdf8;--ok:#4ade80;--bad:#f87171}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--txt)}
+.wrap{max-width:880px;margin:0 auto;padding:20px 16px 60px}
+h1{margin:0 0 4px;font-size:26px}
+.sub{color:var(--mut);margin-bottom:20px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.k{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+.v{font-size:18px;margin-top:4px;word-break:break-all}
+form{display:flex;gap:8px;margin-bottom:16px}
+input[type=text]{flex:1;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--txt);font-size:15px}
+button{padding:12px 16px;border-radius:10px;border:0;background:var(--acc);color:#04202e;font-weight:600;cursor:pointer;font-size:14px}
+button.sec{background:var(--card);color:var(--txt);border:1px solid var(--line)}
+button.del{background:transparent;color:var(--bad);padding:4px 8px;border:1px solid var(--line)}
+ul{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+li{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+li small{color:var(--mut);display:block;margin-top:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 8px;align-items:center}
+.pill{font-size:12px;padding:3px 8px;border-radius:99px;background:#052e16;color:var(--ok)}
+#loadmsg{color:var(--mut);font-size:13px}
+h2{font-size:16px;margin:24px 0 10px;color:var(--mut)}
+</style><script>
+// PREVIEW ONLY: real server ke responses ka snapshot (cluster ke bina UI dikhane ke liye)
+const __notes=[{"id": "1795289111455", "text": "persistent volume test", "ts": 1795289111, "pod": "vm"}, {"id": "1795289111448", "text": "pehla note", "ts": 1795289111, "pod": "vm"}, {"id": "3", "text": "Ingress se notes.local par traffic aa raha hai", "ts": 1795288511, "pod": "notes-app-7d9f-x2k4q"}], __info={"pod": "notes-app-7d9f8c6b5-x2k4q", "uptime_s": 8, "requests": 3};
+window.fetch=async(p,o)=>{
+  const ok=d=>({json:async()=>d});
+  if(o&&o.method==='POST'){const n=JSON.parse(o.body);__notes.unshift({id:String(Date.now()),text:n.text,ts:Math.floor(Date.now()/1000)});return ok({})}
+  if(o&&o.method==='DELETE'){const id=p.split('/').pop();const i=__notes.findIndex(x=>x.id===id);if(i>-1)__notes.splice(i,1);return ok({})}
+  if(p.startsWith('/api/notes'))return ok(__notes);
+  if(p.startsWith('/api/info')){__info.requests++;__info.uptime_s+=1;
+    const pods=['notes-app-7d9f8c6b5-x2k4q','notes-app-7d9f8c6b5-p9m2z'];
+    return ok({...__info,pod:pods[Math.floor(Math.random()*2)]})}
+  return ok({});
+};
+</script></head><body><div class="wrap">
+<h1>Notes Board <span class="pill" id="health">checking…</span></h1>
+<div class="sub">Kubernetes par chalne wala mini microservice &mdash; notes PVC me save hote hain, HPA load par pods barhata hai.</div>
+
+<div class="grid">
+  <div class="card"><div class="k">Serving Pod</div><div class="v" id="pod">-</div></div>
+  <div class="card"><div class="k">Uptime</div><div class="v" id="up">-</div></div>
+  <div class="card"><div class="k">Requests (is pod ne)</div><div class="v" id="req">-</div></div>
+  <div class="card"><div class="k">Total Notes</div><div class="v" id="cnt">0</div></div>
+</div>
+
+<form id="f"><input type="text" id="t" placeholder="Naya note likhein…" maxlength="300" required><button>Add</button></form>
+<ul id="list"></ul>
+
+<h2>HPA / Load-balancing demo</h2>
+<div class="row">
+  <button class="sec" id="burn">CPU load generate karo (30 requests)</button>
+  <button class="sec" id="ping">Pod badal ke dekho (10 requests)</button>
+  <span id="loadmsg"></span>
+</div>
+<div id="pods" class="sub"></div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+async function api(p,o){const r=await fetch(p,o);return r.json()}
+function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function notes(){
+  const n=await api('/api/notes');$('cnt').textContent=n.length;
+  $('list').innerHTML=n.length?n.map(x=>`<li><div>${esc(x.text)}<small>${new Date(x.ts*1000).toLocaleString()}</small></div><button class="del" onclick="del('${x.id}')">Delete</button></li>`).join(''):'<li style="color:var(--mut)">Abhi koi note nahi.</li>';
+}
+async function info(){
+  try{const i=await api('/api/info');$('pod').textContent=i.pod;$('req').textContent=i.requests;
+  $('up').textContent=Math.floor(i.uptime_s/60)+'m '+(i.uptime_s%60)+'s';$('health').textContent='healthy';}
+  catch(e){$('health').textContent='down';$('health').style.color='#f87171'}
+}
+async function del(id){await api('/api/notes/'+id,{method:'DELETE'});notes()}
+$('f').onsubmit=async e=>{e.preventDefault();
+  await api('/api/notes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:$('t').value})});
+  $('t').value='';notes();info()};
+$('burn').onclick=async()=>{$('loadmsg').textContent='load bhej raha hoon…';
+  await Promise.all(Array.from({length:30},()=>fetch('/api/load?ms=800')));
+  $('loadmsg').textContent='done - ab "kubectl get hpa -w" dekhein';info()};
+$('ping').onclick=async()=>{const seen={};
+  for(let i=0;i<10;i++){const r=await api('/api/info');seen[r.pod]=(seen[r.pod]||0)+1}
+  $('pods').textContent='Pods jinhon ne jawab diya: '+Object.entries(seen).map(([k,v])=>k+' ×'+v).join(' | ')};
+notes();info();setInterval(info,5000);
+</script></body></html>
